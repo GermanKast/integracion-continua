@@ -20,7 +20,6 @@ pipeline {
                 sh 'echo "DB_USERNAME=sail" >> .env'
                 sh 'echo "DB_PASSWORD=password" >> .env'
                 
-                // Debug: Mostrar cómo quedó el .env en los logs
                 sh 'cat .env'
 
                 // Instalar dependencias
@@ -35,12 +34,10 @@ pipeline {
                 echo 'Esperando a que MySQL inicie (40s)...'
                 sh 'sleep 40'
                 
-                // REINICIO TÁCTICO PARA ARREGLAR DNS
+                // Reinicio para arreglar DNS
                 sh './vendor/bin/sail restart laravel.test'
-                
-                // Prueba de conexión interna
-                echo 'Probando resolución de DNS interna...'
-                sh './vendor/bin/sail exec laravel.test getent hosts mysql'
+                echo 'Estabilizando red...'
+                sh 'sleep 10'
             }
         }
 
