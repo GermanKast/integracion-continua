@@ -2,7 +2,6 @@ pipeline {
     agent any
 
     environment {
-        // Definimos el nombre del servicio principal
         APP_SERVICE = 'laravel.test'
     }
 
@@ -12,23 +11,37 @@ pipeline {
                 // 1. Copiar el archivo de entorno
                 sh 'cp .env.example .env'
                 
-                // 2. Instalar dependencias de PHP (Backend)
-                // Usamos la imagen oficial de Composer.
-                // Mapeamos el usuario actual (id -u) para evitar problemas de permisos root.
+                // --- NUEVO BLOQUE: FORZAR CONFIGURACIÓN MYSQL ---
+                // Laravel 12 trae SQLite por defecto. Aquí lo cambiamos a MySQL para Sail.
+                
+                // Cambiar conexión de sqlite a mysql
+                sh 'sed -i "s/DB_CONNECTION=sqlite/DB_CONNECTION=mysql/g" .env'
+                
+                // Cambiar el host: De 127.0.0.1 a "mysql" (nombre del contenedor de docker)
+                // El comando intenta descomentar la linea (#) si existe, o cambiarla si no tiene #
+                sh 'sed -i "s/# DB_HOST=127.0.0.1/DB_HOST=mysql/g" .env'
+                sh 'sed -i "s/DB_HOST=127.0.0.1/DB_HOST=mysql/g" .env'
+                
+                // Configurar puerto
+                sh 'sed -i "s/# DB_PORT=3306/DB_PORT=3306/g" .env'
+                
+                // Configurar base de datos, usuario y contraseña (Valores por defecto de Sail)
+                sh 'sed -i "s/# DB_DATABASE=laravel/DB_DATABASE=laravel/g" .env'
+                sh 'sed -i "s/# DB_USERNAME=root/DB_USERNAME=sail/g" .env'
+                sh 'sed -i "s/# DB_PASSWORD=/DB_PASSWORD=password/g" .env'
+                // -----------------------------------------------
+
+                // 2. Instalar dependencias de PHP
                 sh 'docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/app composer:lts install --ignore-platform-reqs'
                 
-                // 3. Arreglar permisos (CRÍTICO EN LINUX)
-                // Damos permisos de escritura a las carpetas de logs y cache
+                // 3. Arreglar permisos
                 sh 'chmod -R 777 storage bootstrap/cache'
             }
         }
 
         stage('Iniciar Sail (Docker)') {
             steps {
-                // 4. Iniciar los contenedores
                 sh './vendor/bin/sail up -d'
-                
-                // 5. Esperar a que MySQL despierte (Damos 30 segundos de seguridad)
                 echo 'Esperando a que la Base de Datos inicie...'
                 sh 'sleep 30'
             }
@@ -36,17 +49,13 @@ pipeline {
 
         stage('Configuracion Laravel') {
             steps {
-                // 6. Generar la llave de encriptación (Esto rellena el APP_KEY en .env)
                 sh './vendor/bin/sail artisan key:generate'
-                
-                // 7. Migrar la base de datos (Crear tablas)
                 sh './vendor/bin/sail artisan migrate:fresh --seed'
             }
         }
 
         stage('Build Frontend (React)') {
             steps {
-                // 8. Instalar dependencias de JS y compilar
                 sh './vendor/bin/sail npm install'
                 sh './vendor/bin/sail npm run build'
             }
@@ -54,7 +63,6 @@ pipeline {
 
         stage('Tests') {
             steps {
-                // 9. Ejecutar pruebas
                 sh './vendor/bin/sail test'
             }
         }
@@ -62,7 +70,6 @@ pipeline {
 
     post {
         always {
-            // 10. Apagar todo al finalizar (sea éxito o error)
             sh './vendor/bin/sail down'
         }
     }
