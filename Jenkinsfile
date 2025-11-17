@@ -11,30 +11,30 @@ pipeline {
                 // 1. Copiar el archivo de entorno
                 sh 'cp .env.example .env'
                 
-                // --- NUEVO BLOQUE: FORZAR CONFIGURACIÓN MYSQL ---
-                // Laravel 12 trae SQLite por defecto. Aquí lo cambiamos a MySQL para Sail.
+                // --- ESTRATEGIA LIMPIA PARA .ENV ---
+                // En lugar de buscar y reemplazar, borramos toda config de DB vieja
+                // y agregamos la nueva al final. Es a prueba de errores.
                 
-                // Cambiar conexión de sqlite a mysql
-                sh 'sed -i "s/DB_CONNECTION=sqlite/DB_CONNECTION=mysql/g" .env'
+                // 1. Borrar cualquier línea que empiece por DB_
+                sh 'sed -i "/^DB_/d" .env'
                 
-                // Cambiar el host: De 127.0.0.1 a "mysql" (nombre del contenedor de docker)
-                // El comando intenta descomentar la linea (#) si existe, o cambiarla si no tiene #
-                sh 'sed -i "s/# DB_HOST=127.0.0.1/DB_HOST=mysql/g" .env'
-                sh 'sed -i "s/DB_HOST=127.0.0.1/DB_HOST=mysql/g" .env'
+                // 2. Inyectar la configuración limpia para Docker/Sail
+                sh 'echo "" >> .env'
+                sh 'echo "DB_CONNECTION=mysql" >> .env'
+                sh 'echo "DB_HOST=mysql" >> .env'
+                sh 'echo "DB_PORT=3306" >> .env'
+                sh 'echo "DB_DATABASE=laravel" >> .env'
+                sh 'echo "DB_USERNAME=sail" >> .env'
+                sh 'echo "DB_PASSWORD=password" >> .env'
                 
-                // Configurar puerto
-                sh 'sed -i "s/# DB_PORT=3306/DB_PORT=3306/g" .env'
-                
-                // Configurar base de datos, usuario y contraseña (Valores por defecto de Sail)
-                sh 'sed -i "s/# DB_DATABASE=laravel/DB_DATABASE=laravel/g" .env'
-                sh 'sed -i "s/# DB_USERNAME=root/DB_USERNAME=sail/g" .env'
-                sh 'sed -i "s/# DB_PASSWORD=/DB_PASSWORD=password/g" .env'
-                // -----------------------------------------------
+                // (Opcional) Verificar visualmente en los logs cómo quedó el archivo
+                sh 'grep "DB_" .env' 
+                // -----------------------------------
 
-                // 2. Instalar dependencias de PHP
+                // 3. Instalar dependencias de PHP
                 sh 'docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/app composer:lts install --ignore-platform-reqs'
                 
-                // 3. Arreglar permisos
+                // 4. Arreglar permisos
                 sh 'chmod -R 777 storage bootstrap/cache'
             }
         }
@@ -42,14 +42,16 @@ pipeline {
         stage('Iniciar Sail (Docker)') {
             steps {
                 sh './vendor/bin/sail up -d'
-                echo 'Esperando a que la Base de Datos inicie...'
-                sh 'sleep 30'
+                echo 'Esperando a que la Base de Datos inicie (40s)...'
+                sh 'sleep 40'
             }
         }
 
         stage('Configuracion Laravel') {
             steps {
                 sh './vendor/bin/sail artisan key:generate'
+                
+                // Intentamos la migración. Si falla, Sail reintentará la conexión.
                 sh './vendor/bin/sail artisan migrate:fresh --seed'
             }
         }
