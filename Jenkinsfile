@@ -8,17 +8,10 @@ pipeline {
     stages {
         stage('Preparar Entorno') {
             steps {
-                // 1. Copiar el archivo de entorno
                 sh 'cp .env.example .env'
                 
-                // --- ESTRATEGIA LIMPIA PARA .ENV ---
-                // En lugar de buscar y reemplazar, borramos toda config de DB vieja
-                // y agregamos la nueva al final. Es a prueba de errores.
-                
-                // 1. Borrar cualquier línea que empiece por DB_
+                // Limpieza y configuración del .env
                 sh 'sed -i "/^DB_/d" .env'
-                
-                // 2. Inyectar la configuración limpia para Docker/Sail
                 sh 'echo "" >> .env'
                 sh 'echo "DB_CONNECTION=mysql" >> .env'
                 sh 'echo "DB_HOST=mysql" >> .env'
@@ -27,14 +20,11 @@ pipeline {
                 sh 'echo "DB_USERNAME=sail" >> .env'
                 sh 'echo "DB_PASSWORD=password" >> .env'
                 
-                // (Opcional) Verificar visualmente en los logs cómo quedó el archivo
-                sh 'grep "DB_" .env' 
-                // -----------------------------------
+                // Debug: Mostrar cómo quedó el .env en los logs
+                sh 'cat .env'
 
-                // 3. Instalar dependencias de PHP
+                // Instalar dependencias
                 sh 'docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/app composer:lts install --ignore-platform-reqs'
-                
-                // 4. Arreglar permisos
                 sh 'chmod -R 777 storage bootstrap/cache'
             }
         }
@@ -42,16 +32,21 @@ pipeline {
         stage('Iniciar Sail (Docker)') {
             steps {
                 sh './vendor/bin/sail up -d'
-                echo 'Esperando a que la Base de Datos inicie (40s)...'
+                echo 'Esperando a que MySQL inicie (40s)...'
                 sh 'sleep 40'
+                
+                // REINICIO TÁCTICO PARA ARREGLAR DNS
+                sh './vendor/bin/sail restart laravel.test'
+                
+                // Prueba de conexión interna
+                echo 'Probando resolución de DNS interna...'
+                sh './vendor/bin/sail exec laravel.test getent hosts mysql'
             }
         }
 
         stage('Configuracion Laravel') {
             steps {
                 sh './vendor/bin/sail artisan key:generate'
-                
-                // Intentamos la migración. Si falla, Sail reintentará la conexión.
                 sh './vendor/bin/sail artisan migrate:fresh --seed'
             }
         }
