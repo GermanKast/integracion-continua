@@ -16,13 +16,10 @@ pipeline {
 
         stage('Preparar Entorno') {
             steps {
-                // Copia el archivo de entorno y genera la key
                 sh 'cp .env.example .env'
-                // Instala dependencias de PHP usando una imagen temporal de composer
-                // Esto es necesario para tener el archivo 'sail' disponible
-                //sh 'docker run --rm -v $(pwd):/var/www/html -w /var/www/html laravel/sail:latest-php8.2 composer install --ignore-platform-reqs'
-                // * CORRECCIÓN * Alternativa usando la imagen oficial de composer
-                sh 'docker run --rm -v $(pwd):/app composer install --ignore-platform-reqs'
+                // Usamos una imagen de docker temporal para instalar las dependencias la primera vez
+                // Nota: Usamos $(id -u) para que los archivos creados pertenezcan a jenkins y no a root
+                sh 'docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/var/www/html -w /var/www/html laravelsail/php82-composer:latest composer install --ignore-platform-reqs'
             }
         }
 
