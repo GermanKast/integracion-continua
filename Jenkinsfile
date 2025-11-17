@@ -20,7 +20,9 @@ pipeline {
                 sh 'cp .env.example .env'
                 // Instala dependencias de PHP usando una imagen temporal de composer
                 // Esto es necesario para tener el archivo 'sail' disponible
-                sh 'docker run --rm -v $(pwd):/var/www/html -w /var/www/html laravel/sail:latest-php8.2 composer install --ignore-platform-reqs'
+                //sh 'docker run --rm -v $(pwd):/var/www/html -w /var/www/html laravel/sail:latest-php8.2 composer install --ignore-platform-reqs'
+                // * CORRECCIÓN * Alternativa usando la imagen oficial de composer
+                sh 'docker run --rm -v $(pwd):/app composer install --ignore-platform-reqs'
             }
         }
 
